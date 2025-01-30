@@ -58,7 +58,7 @@ If none of those approvers are still appropriate, then changes to that list
 should be approved by the remaining approvers and/or the owning SIG (or
 SIG Architecture for cross-cutting KEPs).
 -->
-# KEP-NNNN: kubectl adm top persistentvolumeclaim
+# KEP-NNNN: kubectl top persistentvolumeclaim
 
 <!--
 This is the title of your KEP. Keep it short, simple, and descriptive. A good
@@ -186,7 +186,7 @@ demonstrate the interest in a KEP within the wider Kubernetes community.
 [experience reports]: https://github.com/golang/go/wiki/ExperienceReports
 -->
 
-There already exist options like `kubectl adm top pod` that can display usage
+There already exist options like `kubectl top pod` that can display usage
 statistic of the server resources. Adding an option to display also usage of
 the PersistentVolumeClaims seems like a natural extension which provides
 important information about the persistent storage available to the workloads.
@@ -221,8 +221,9 @@ The "Design Details" section below is for the real
 nitty-gritty.
 -->
 
-Implement `oc adm top persistentvolumeclaims` command that would show usage
-statistic of the bound PersistentVolumeClaim like this
+Implement `kubectl top persistentvolumeclaims` (and abbreviated `kubectl top pvc`)
+command that would show usage statistic of the bound PersistentVolumeClaim
+like this:
 
 ```text
 oc adm top pvc -n reproducer-pvc
@@ -260,6 +261,10 @@ Go in to as much detail as necessary here.
 This might be a good place to talk about core concepts and how they relate.
 -->
 
+The feature depends on the metric endpoints to be accessible by the user. That
+means the Prometheus metrics server should be configured and running and the
+user of the `kubectl` command has neceessary permissions to access the metrics.
+
 ### Risks and Mitigations
 
 <!--
@@ -283,6 +288,20 @@ required) or even code snippets. If there's any ambiguity about HOW your
 proposal will be implemented, this is the place to discuss them.
 -->
 
+There are the `kubelet_volume_stats_used_bytes` and
+`kubelet_volume_stats_capacity_bytes` Prometheus metrics which can be used to
+compute the volume used space percentage.
+
+In case the Prometheus pods are down the command would fail:
+
+```
+$ kubectl top persistentvolumeclaims 
+error: failed to get persistentvolumeclaims from Prometheus: unable to get /api/v1/query from URI in the cluster-monitoring/prometheus-k8s Route: prometheus-k8s-cluster-monitoring.apps.kube1234.lab.local->GET status code=503
+```
+
+The users also need to have necessary permissions to access the metrics. The
+exact setting might differ by the cluster policies configuration.
+
 ### Test Plan
 
 <!--
@@ -296,7 +315,7 @@ when drafting this test plan.
 [testing-guidelines]: https://git.k8s.io/community/contributors/devel/sig-testing/testing.md
 -->
 
-[ ] I/we understand the owners of the involved components may require updates to
+[X] I/we understand the owners of the involved components may require updates to
 existing tests to make this code solid enough prior to committing the changes necessary
 to implement this enhancement.
 
@@ -391,25 +410,22 @@ functionality is accessed.
 [deprecation-policy]: https://kubernetes.io/docs/reference/using-api/deprecation-policy/
 
 Below are some examples to consider, in addition to the aforementioned [maturity levels][maturity-levels].
-
+-->
 #### Alpha
 
-- Feature implemented behind a feature flag
-- Initial e2e tests completed and enabled
+- Feature implemented and marked as experimental
 
 #### Beta
 
-- Gather feedback from developers and surveys
-- Complete features A, B, C
-- Additional tests are in Testgrid and linked in KEP
+- Gather feedback from users
+- Consider additional improvements (additional data to display, formatting options, etc.)
 
 #### GA
 
-- N examples of real-world usage
-- N installs
-- More rigorous forms of testing—e.g., downgrade tests and scalability tests
-- Allowing time for feedback
+- Gather additional feedback on the changes
+- Stabilize the output and formatting
 
+<!--
 **Note:** Generally we also wait at least two releases between beta and
 GA/stable, because there's no opportunity for user feedback, or even bug reports,
 in back-to-back releases.
@@ -429,17 +445,7 @@ in back-to-back releases.
 
 ### Upgrade / Downgrade Strategy
 
-<!--
-If applicable, how will the component be upgraded and downgraded? Make sure
-this is in the test plan.
-
-Consider the following in developing an upgrade/downgrade strategy for this
-enhancement:
-- What changes (in invocations, configurations, API use, etc.) is an existing
-  cluster required to make on upgrade, in order to maintain previous behavior?
-- What changes (in invocations, configurations, API use, etc.) is an existing
-  cluster required to make on upgrade, in order to make use of the enhancement?
--->
+N/A
 
 ### Version Skew Strategy
 
@@ -455,6 +461,8 @@ enhancement:
 - Will any other components on the node change? For example, changes to CSI,
   CRI or CNI may require updating that component before the kubelet.
 -->
+
+The `kubectl` command must skew +/- one like normal commands.
 
 ## Production Readiness Review Questionnaire
 
@@ -501,15 +509,18 @@ well as the [existing list] of feature gates.
 - [ ] Feature gate (also fill in values in `kep.yaml`)
   - Feature gate name:
   - Components depending on the feature gate:
-- [ ] Other
-  - Describe the mechanism:
+- [X] Other
+  - Describe the mechanism: A new `kubectl top persistentvolumeclaims`
+    and `kubectl top pvc` subcommands are added and the
+    description would mark them as experimental in the inital release.
   - Will enabling / disabling the feature require downtime of the control
-    plane?
+    plane? No, this is completely a client-side feature.
   - Will enabling / disabling the feature require downtime or reprovisioning
-    of a node?
+    of a node? No, this is completely a client-side feature.
 
 ###### Does enabling the feature change any default behavior?
 
+No.
 <!--
 Any change of default behavior may be surprising to users or break existing
 automations, so be extremely careful here.
@@ -517,6 +528,7 @@ automations, so be extremely careful here.
 
 ###### Can the feature be disabled once it has been enabled (i.e. can we roll back the enablement)?
 
+Yes, rolling back to previous version of `kubectl` would remove the feature.
 <!--
 Describe the consequences on existing workloads (e.g., if this is a runtime
 feature, can it break the existing applications?).
@@ -530,7 +542,11 @@ NOTE: Also set `disable-supported` to `true` or `false` in `kep.yaml`.
 
 ###### What happens if we reenable the feature if it was previously rolled back?
 
+The new subcommand would come back and would be usable again.
+
 ###### Are there any tests for feature enablement/disablement?
+
+No, there's no way to disable the feature in a single `kubectl` version.
 
 <!--
 The e2e framework does not currently support enabling or disabling feature
@@ -553,6 +569,9 @@ This section must be completed when targeting beta to a release.
 
 ###### How can a rollout or rollback fail? Can it impact already running workloads?
 
+The feature is completely encapsulated in the `kubectl` binary. Even if it works
+incorrectly, it changes nothing on the running cluster and cannot affect workloads.
+
 <!--
 Try to be as paranoid as possible - e.g., what if some components will restart
 mid-rollout?
@@ -565,6 +584,7 @@ will rollout across nodes.
 
 ###### What specific metrics should inform a rollback?
 
+N/A
 <!--
 What signals should users be paying attention to when the feature is young
 that might indicate a serious problem?
@@ -572,6 +592,8 @@ that might indicate a serious problem?
 
 ###### Were upgrade and rollback tested? Was the upgrade->downgrade->upgrade path tested?
 
+This feature has no impact on the cluster upgrades or downgrades. The upgrade or
+downgrade of the `kubectl` binary itself only affects availability of the feature.
 <!--
 Describe manual testing that was done and the outcomes.
 Longer term, we may want to require automated upgrade/rollback tests, but we
@@ -583,6 +605,7 @@ are missing a bunch of machinery and tooling and can't do that now.
 <!--
 Even if applying deprecation policies, they may still surprise some users.
 -->
+No.
 
 ### Monitoring Requirements
 
@@ -595,6 +618,7 @@ previous answers based on experience in the field.
 
 ###### How can an operator determine if the feature is in use by workloads?
 
+N/A
 <!--
 Ideally, this should be a metric. Operations against the Kubernetes API (e.g.,
 checking if there are objects with field X set) may be a last resort. Avoid
@@ -603,6 +627,7 @@ logs or events for this purpose.
 
 ###### How can someone using this feature know that it is working for their instance?
 
+N/A
 <!--
 For instance, if this is a pod-related feature, it should be possible to determine if the feature is functioning properly
 for each individual pod.
@@ -680,6 +705,12 @@ and creating new ones, as well as about cluster-level services (e.g. DNS):
       - Impact of its degraded performance or high-error rates on the feature:
 -->
 
+ - [Prometheus metrics server]
+  - The command queries the `kubelet_volume_stats_used_bytes` and
+    `kubelet_volume_stats_capacity_bytes` metrics to compute the volume usage
+    percentage
+     - If the Prometheus metrics are not available, an error message is printed
+
 ### Scalability
 
 <!--
@@ -706,6 +737,8 @@ Focusing mostly on:
   - periodic API calls to reconcile state (e.g. periodic fetching state,
     heartbeats, leader election, etc.)
 -->
+No. Using the new command would only result in a new metric endpoint query. Given
+it is user initiated, the load increase should be negligible.
 
 ###### Will enabling / using this feature result in introducing new API types?
 
@@ -715,6 +748,7 @@ Describe them, providing:
   - Supported number of objects per cluster
   - Supported number of objects per namespace (for namespace-scoped objects)
 -->
+No.
 
 ###### Will enabling / using this feature result in any new calls to the cloud provider?
 
@@ -723,6 +757,7 @@ Describe them, providing:
   - Which API(s):
   - Estimated increase:
 -->
+No.
 
 ###### Will enabling / using this feature result in increasing size or count of the existing API objects?
 
@@ -732,6 +767,7 @@ Describe them, providing:
   - Estimated increase in size: (e.g., new annotation of size 32B)
   - Estimated amount of new objects: (e.g., new Object X for every existing Pod)
 -->
+No.
 
 ###### Will enabling / using this feature result in increasing time taken by any operations covered by existing SLIs/SLOs?
 
@@ -743,6 +779,7 @@ Think about adding additional work or introducing new steps in between
 
 [existing SLIs/SLOs]: https://git.k8s.io/community/sig-scalability/slos/slos.md#kubernetes-slisslos
 -->
+No.
 
 ###### Will enabling / using this feature result in non-negligible increase of resource usage (CPU, RAM, disk, IO, ...) in any components?
 
@@ -755,6 +792,7 @@ This through this both in small and large cases, again with respect to the
 
 [supported limits]: https://git.k8s.io/community//sig-scalability/configs-and-limits/thresholds.md
 -->
+No.
 
 ###### Can enabling / using this feature result in resource exhaustion of some node resources (PIDs, sockets, inodes, etc.)?
 
@@ -767,6 +805,7 @@ If any of the resources can be exhausted, how this is mitigated with the existin
 Are there any tests that were run/should be run to understand performance characteristics better
 and validate the declared limits?
 -->
+No.
 
 ### Troubleshooting
 
@@ -783,8 +822,11 @@ details). For now, we leave it here.
 
 ###### How does this feature react if the API server and/or etcd is unavailable?
 
+`kubectl` is not resilient to API server unavailability.
+
 ###### What are other known failure modes?
 
+N/A
 <!--
 For each of them, fill in the following information by copying the below template:
   - [Failure mode brief description]
@@ -800,6 +842,8 @@ For each of them, fill in the following information by copying the below templat
 
 ###### What steps should be taken if SLOs are not being met to determine the problem?
 
+N/A
+
 ## Implementation History
 
 <!--
@@ -812,25 +856,19 @@ Major milestones might include:
 - the version of Kubernetes where the KEP graduated to general availability
 - when the KEP was retired or superseded
 -->
+2025-01-30: Initial KEP draft
 
 ## Drawbacks
 
 <!--
 Why should this KEP _not_ be implemented?
 -->
+Since the volume usage values are read from Prometheus metrics, the feature
+is only useful to the users who have the Prometheus matrics server configured
+and running in their cluster.
 
 ## Alternatives
 
-<!--
-What other approaches did you consider, and why did you rule them out? These do
-not need to be as detailed as the proposal, but should include enough
-information to express the idea and why it was not acceptable.
--->
-
-## Infrastructure Needed (Optional)
-
-<!--
-Use this section if you need things from the project/SIG. Examples include a
-new subproject, repos requested, or GitHub details. Listing these here allows a
-SIG to get the process for these resources started right away.
--->
+It is possible to obtain the provided information already, e.g. by running
+the `df` command on a mounted volume from a pod or querying PV, PVC and node
+stats summary manually. This is however quite complicated and inconvenient.
